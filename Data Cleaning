@@ -1,0 +1,210 @@
+-- Data Cleaning
+MySQL Data Cleaning Project: Layoffs Dataset
+Project Overview 
+In this project, I performed data cleaning tasks on MySQL with a dataset containing information about layoffs. 
+The dataset included details such as company name, location, industry, total number of layoffs, percentage of layoffs, date, stage, country, and funds raised. 
+The main objective of this project was to clean and preprocess the data to ensure its quality, consistency, and usability for further analysis. 
+By applying various data cleaning techniques, I aimed to improve the integrity and reliability of the dataset. 
+
+1. Removing Duplicates: 
+
+-- Create a staging table to store the initial data 
+CREATE TABLE layoffs_staging 
+LIKE layoffs;
+
+INSERT layoffs_staging
+SELECT *
+FROM layoffs;
+
+-- Create a staging table to store the duplicated data 
+CREATE TABLE `layoffs_staging2` (
+  `company` text,
+  `location` text,
+  `industry` text,
+  `total_laid_off` int DEFAULT NULL,
+  `percentage_laid_off` text,
+  `date` text,
+  `stage` text,
+  `country` text,
+  `funds_raised_millions` int DEFAULT NULL,
+  `row_num` INT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Insert duplicated data into the staging table
+INSERT INTO layoffs_staging2
+SELECT *,
+ROW_NUMBER() OVER(
+PARTITION BY company, location, industry, total_laid_off, percentage_laid_off, `date`, stage, country, funds_raised_millions) AS row_num
+FROM layoffs_staging;
+
+-- Remove duplicate records from the staging table
+DELETE
+FROM layoffs_staging2
+WHERE row_num > 1;
+
+-- Verify the duplicated data
+SELECT *
+FROM layoffs_staging2;
+
+-- Removing Duplicates:
+To remove duplicate data, I created a staging table layoffs_staging as a copy of the original layoffs table to store the initial data. 
+Then, I created a new staging table layoffs_staging2 to store the deduplicated data. 
+I used the ROW_NUMBER() function to assign a unique row number to reach record within each partition defined by the specified columns. 
+By inserting the data into the staging table with the row number, I could easily identify and remove duplicate data by deleting rows where row_num > 1. 
+
+
+2. Standardizing Data:
+
+-- Trim leading/trailing spaces from the company column
+SELECT company, TRIM(company)
+FROM layoffs_staging2;
+
+UPDATE layoffs_staging2
+SET company = TRIM(company);
+
+-- Standardize the industry column by updating 'Crypto%' variations to 'Crypto'
+SELECT *
+FROM layoffs_staging2
+WHERE industry LIKE 'Crypto%';
+
+UPDATE layoffs_staging2
+SET industry = 'Crypto'
+WHERE industry LIKE 'Crypto%';
+
+-- Trim the trailing '.' from the country column for 'United States' entries 
+SELECT DISTINCT country 
+FROM layoffs_staging2
+ORDER BY 1;
+
+SELECT DISTINCT country, TRIM(TRAILING '.' FROM country)
+FROM layoffs_staging2
+ORDER BY 1;
+
+UPDATE layoffs_staging2
+SET country = TRIM(TRAILING '.' FROM country)
+WHERE country LIKE 'United States%';
+
+-- Convert the date column to the DATE format 
+SELECT `date`,
+STR_TO_DATE(`date`, '%m/%d/%Y')
+FROM layoffs_staging2;
+
+UPDATE layoffs_staging2
+SET `date` = STR_TO_DATE(`date`, '%m/%d/%Y');
+
+-- Modify the date column type to DATE
+SELECT `date`
+FROM layoffs_staging2; 
+
+ALTER TABLE layoffs_staging2
+MODIFY COLUMN `date` DATE;
+
+-- Standardizing Data:
+The Trim() function is used to remove the leading and trailing spaces from the company column values. 
+This step ensures that the company names are consistently formatted without any unnecessary spaces. 
+The industry column values that start with 'Crypto' are updated to a standardized value of 'Crypto'. 
+This step helps maintain consistency in the industry categorization. 
+The TRIM(TRAILING '.' FROM country) function is used to remove the trailing dot ('.') from the country column values that start with 'United States'.
+This step ensures a consistent format for the country name 'United States'. 
+The STR_TO_DATE() function is used to convert the date column values from a string format ('%m/%d/%Y') to the MySQL DATE format.
+This step allows for proper date-based operations and comparisons. 
+The ALTER TABLE statement is used to change the data type of the date column to DATE.
+This step ensures that the date column is stored and treated as a date type in the table, enabling efficient date-related queries and analyses. 
+        
+
+3. Null or Blank Values
+
+-- Identify records where both total_laid_off and percentage_laid_off columns are NULL
+SELECT *
+FROM layoffs_staging2
+WHERE total_laid_off IS NULL
+AND percentage_laid_off IS NULL;
+
+-- Update the industry column to NULL where it is an empty string 
+UPDATE layoffs_staging2
+SET industry = NULL
+WHERE industry = '';
+
+SELECT *
+FROM layoffs_staging2
+WHERE industry IS NULL
+OR industry = '';
+
+SELECT *
+FROM layoffs_staging2
+WHERE company LIKE 'Bally%';
+
+-- Identify records where the industry column is NULL or an empty string,
+-- but the same company and location combination has a non-NULL industry value in another record
+SELECT *
+FROM layoffs_staging2 AS t1
+JOIN layoffs_staging2 AS t2
+	ON t1.company = t2.company
+    AND t1.location = t2.location
+WHERE (t1.industry IS NULL OR t1.industry = '')
+AND t2.industry IS NOT NULL;
+
+-- Update the industry column with non-NULL values from matching coompany and Location records
+UPDATE layoffs_staging2 AS t1
+JOIN layoffs_staging2 AS t2
+	ON t1.company = t2.company
+SET t1.industry = t2.industry
+WHERE t1.industry IS NULL
+AND t2.industry IS NOT NULL;
+
+-- Null or Blank Values:
+The first SELECT query identifies where both the total_laid_off and percentage_laid_off columns are NULL. 
+This step helps locate records with missing values in these columns for further analysis or handling. 
+The UPDATE statement sets the industry column to NULL where it currently has an empty string value.
+This step ensures consistent treatment of missing values by converting empty strings NULL. 
+The SELECT query identifies records where the industry column is either NULL or an empty string. 
+This step helps locate records with missing or blank industry information. 
+The SELECT query retrieves records where the company column includes anything that starts with 'Bally'. 
+This step allows for targeted analysis or handling of records related to a particular company. 
+The SELECT query uses a self-join to identify records where the industry column is NULL or an empty string, 
+but the same combination of company and location exists in another record with a non-NULL industry value.
+This step helps identify records that can potentially have their missing industry values populated based on information from other records. 
+The UPDATE statement uses a self-join to update the industry column of records where it is NULL,
+with the non-NULL industry value from another record with the same company. 
+This step populates missing industry values based on the assumption that records with the same company location should have the same industry value. 
+        
+        
+4. Remove Columns
+
+-- Identify records where both total_laid_off and percentage_laid_off columns are NULL
+SELECT *
+FROM layoffs_staging2
+WHERE total_laid_off IS NULL
+AND percentage_laid_off IS NULL;
+
+-- Remove records where both total_laid_off and percentage_laid_off columns are NULL
+DELETE
+FROM layoffs_staging2
+WHERE total_laid_off IS NULL 
+AND percentage_laid_off IS NULL;
+
+-- Verify the remaining records in the table 
+SELECT * 
+FROM layoffs_staging2;
+
+-- Remove the row_num column from the table 
+ALTER TABLE layoffs_staging2
+DROP COLUMN row_num;
+
+-- Remove Columns:
+The SELECT query identifies records where both the total_laid_off and percentage_laid_off columns are NULL.
+This step helps locate records with missing values in these columns for further analysis or removal. 
+The DELETE statement removes records from the layoffs_staging2 table where both the total_laid_off and percentage_laid_off columns are NULL.
+This step eliminates records that have missing values in these important columns, as they may not provide meaningful information for analysis. 
+The SELECT query retrieves all the remaining records in the layoffs_staging2 table after the removal of records with NULL values. 
+This step allows you to verify the retained records and ensure that the desired data is present. 
+The ALTER TABLE statement with the DROP COLUMN clause is used to remove the row_num column from the layoffs_staging2 table. 
+This step eliminates the row_num column, which was previously used for identifying duplicate records and is no longer needed in the final cleaned dataset. 
+
+
+-- Results and Insights:
+After applying the data cleaning techniques, the resulting dataset improved data quality and consistency. 
+The removal of duplicates and standardization of data ensured that the dataset was more reliable for analysis purposes. 
+By handling null or blank values appropriately, I maintained the integrity of the data while minimizing data loss. 
+The self-join technique allowed for the population of missing industry values based on available information. 
+The cleaned dataset enables more accurate and meaningful analysis of the layoffs data, facilitating insights into trends, patterns, and potential correlations between various factors. 
